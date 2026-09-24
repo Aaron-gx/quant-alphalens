@@ -1,0 +1,131 @@
+# 复制为 config.toml 后填写真实配置（config.toml 已在 .gitignore 中）
+
+[llm]
+# 任意兼容 OpenAI 协议的端点
+base_url = "https://api.deepseek.com"
+api_key = "sk-xxxxxxxxxxxxxxxx"
+# 普通分析模型（便宜、快）
+model = "deepseek-chat"
+# 推理模型（用于综合裁决层，可与普通模型相同）
+reasoner_model = "deepseek-reasoner"
+temperature = 0.3
+timeout = 120
+
+[db]
+# 本地 SQLite；上服务器后改为 postgresql+psycopg://user:pass@host/db
+url = "sqlite:///data/jijin.db"
+
+[api]
+# 机器人/外部调用鉴权；留空则本地免鉴权
+api_key = ""
+host = "0.0.0.0"
+port = 8000
+
+[http]
+# 可选：HTTP 代理（如本地 Clash 混合端口 http://127.0.0.1:7890）。
+# 留空则直连。配置后所有行情请求（含 akshare/efinance 内部请求）都走该代理。
+# 配合代理客户端把东财域名路由到节点，可绕过行情接口的 IP 风控。
+proxy = ""
+
+[predict]
+# fast  = 单次综合调用（省 token，~1 次 LLM 调用）
+# deep  = 分层流水线（技术面/新闻面分别调 LLM 后再综合，更准但更贵）
+mode = "fast"
+news_days = 7          # 取最近 N 天新闻
+news_limit = 10        # 最多喂给模型的新闻条数
+flat_threshold_pct = 0.5   # 【唯一来源】涨跌在 ±x% 内视为"平盘"
+                       #   1.0 会让 flat 类占比过高（实测 45%），任务退化为"多数类猜谜"：
+                       #   一个无脑多猜 flat 的模型就能拿到 56.7% 的"体面"命中率。
+                       #   0.5 恢复任务辨识度。各周期按 √step 自动缩放（一周 ±1.1%、
+                       #   一月 ±2.2%、一季 ±3.9%），无需分别配置。
+use_quant = true       # 量化引擎交叉验证
+quant_backend = "auto" # 后端链：auto（默认）= LightGBM → GBDT → numpy 岭回归，逐个探针降级；仅作手动降级开关
+                       #   auto 之所以**不含 LightGBM**，是实测结论：
+                       #   LightGBM 在"多周期训练 + 与行情数据链(akshare/efinance)/sqlite
+                       #   交替"的真实负载下会**进程级硬崩溃**（单周期能过、第 2~3 周期必崩）；
+                       #   硬崩溃无法被 try/except 捕获 ⇒ 进程内探针 + 降级这套机制对它
+                       #   先天无效（探针够忠实就会在探针阶段打死进程，不够忠实就拦不住）。
+                       #   同一负载下 sklearn GBDT 四周期稳定完成（各约 0.4s），
+                       #   样本外 BSS 相当。故默认 GBDT。
+                       #   想启用 LightGBM：设 "lgbm"（风险自担，崩溃会杀死预测进程）。
+quant_probe_rounds = 3 # 后端可用性探针的连续拟合轮数（判据是"真能 fit"，不是 import）
+kline_count = 700      # 拉取的日K根数（给量化引擎做 purged walk-forward；LLM 只看近 15 根）
+                       #   协议：min_train=250 + purge(horizon=step) + embargo=2，共 5 折，
+                       #   故有效样本需 ≥ 257+step 才出得了折；有效样本 ≈ 总数 − 60 − step
+                       #   （60 是 ma60/ret60 的特征预热）。
+                       #   400 根：h=1/5/20 能出折，但 h=60 需 317 条而只有 280 条
+                       #     → 该周期一条样本外指标都产不出，表现为"有量化概率但
+                       #       has_skill 恒 false、融合权重恒 0"（本项目实测）。
+                       #   700 根：四周期分别约 385/375/345/265 条样本外样本。
+                       #   下限：h=60 最少要约 440 根。别调回 120/250——
+                       #   250 根时有效样本约 189 < 258，**四个周期全部无样本外指标**，
+                       #   融合权重被门控恒判 0 → 量化引擎形同虚设，而日志与 UI 上完全正常。
+quant_weight = 0.35    # 融合权重**上限**；实际权重按样本外 BSS 自适应，无技能则归零
+quant_min_bss = 0.0    # 样本外 BSS ≤ 该值 → 量化权重直接归零（不稀释 LLM 概率）
+quant_target_bss = 0.05 # 样本外 BSS 达到该值即给满 quant_weight
+use_calibration = true # 用到期对账样本自学习校准概率（样本不足时自动跳过并如实标注）
+calib_ttl_days = 3     # 校准包有效期（天）：过期视为陈旧模型，等下次重训
+
+[intel]
+# 舆情相关性筛选门槛（0~1）：低于该值的情报只留档、不参与情绪投票
+# 0.30 = 命中标的/重仓股/跟踪指数/宏观政策才入选，泛市场快讯被剔除
+min_relevance = 0.30
+
+[paper]
+# 交易费率（A股）
+commission_rate = 0.00025   # 佣金万 2.5
+commission_min  = 5.0       # 单笔最低 5 元
+stamp_tax_rate  = 0.0005    # 印花税（卖出收，2023 年起 0.05%）
+default_cash    = 1000000.0 # 新建虚拟账户默认资金
+
+[schedule]
+enabled = true
+morning_brief_time = "08:50" # 盘前简报
+eod_predict_time = "15:30"   # 收盘后对自选标的跑预测
+ai_trade_time    = "14:50"   # AI信号账户尾盘自动调仓
+trader_time      = "14:40"   # AI 交易员每日自主循环（早于 AI 调仓，避开拥挤）
+evaluate_time    = "18:00"   # 到期预测对账
+nav_snapshot_time = "16:00"  # 模拟盘净值快照
+anomaly_pct      = 5.0       # 盘中异动阈值（涨跌幅%）
+
+# ---------------------------------------------------------------------------
+# AI 交易员（agent harness）
+#   给它一笔资金，让它自己选标的、自己下单，并在预测与实际不符时
+#   自我纠正并把教训写入三层记忆，逐日训练。
+# ---------------------------------------------------------------------------
+
+[trader]
+enabled = true
+default_cash = 1000000.0      # 新建交易员默认初始资金
+benchmark_symbol = "沪深300"   # 组合评估基准
+max_turns = 8                 # 单轮决策最多 LLM 往返次数
+max_tool_calls = 20           # 单轮最多工具调用次数
+max_cost_per_day = 8.0        # 单日 LLM 成本上限（元），超出则强制观望
+max_consecutive_failures = 3  # 连续失败达此数自动暂停该交易员
+memory_mirror_dir = "data/trader_memory"   # 记忆 Markdown 镜像目录（只读派生）
+
+[trader.memory]
+# 三层记忆的"证据门"：防止 AI 凭单次运气就永久改变行为（自我强化错误）
+min_evidence_to_activate = 3       # candidate → active 所需最少证据条数
+min_confidence_to_activate = 0.6   # 升级所需最低置信度
+max_counter_ratio = 0.333          # 反证数/证据数 超过该比例即降级
+ctx_max_lessons = 10               # 决策上下文里最多注入几条已生效教训
+ctx_max_mistakes = 5               # 决策上下文里最多注入几条历史失误
+
+[trader.guard]
+# 确定性风控门禁阈值。AI **看不到**这些数值，也无法绕过。
+max_weight_per_symbol = 0.30   # 单一标的上限
+max_total_position = 0.95      # 总仓位上限
+min_cash_weight = 0.05         # 现金下限
+max_trades_per_day = 3         # 单日交易笔数上限
+max_daily_loss_pct = 3.0       # 单日亏损熔断（相对日初净值）
+max_positions = 8              # 最多持仓数
+min_order_amount = 1000.0      # 单笔最小金额（仅约束买入；卖出不设门槛以便清仓）
+banned_symbols = []            # 黑名单
+cost_warn_pct = 1.5            # 交易成本占比告警阈值
+
+[trader.attributor]
+# 纠错归因：把"市场拖累 / 噪声"与"判断失误"分开，只有后者才允许被学习
+# 噪声阈值**不再单独配置**，统一继承 [predict].flat_threshold_pct
+# （原先三处各写一遍，改一处必漂移，已收敛为单一来源）
+beta_ratio = 0.6           # 大盘跌幅可解释占比 ≥ 该值 → 归因市场，不学

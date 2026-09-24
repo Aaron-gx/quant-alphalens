@@ -1,0 +1,33 @@
+# data & compute
+akshare>=1.14.0
+efinance>=0.5.0
+pandas>=2.0,<3.0
+numpy>=1.26,<3.0
+requests>=2.31
+python-dateutil>=2.8
+
+# AI
+openai>=1.30
+pydantic>=2.6
+
+# storage
+sqlalchemy>=2.0
+
+# api layer
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# ui
+streamlit>=1.35
+plotly>=5.20
+
+# scheduler
+apscheduler>=3.10,<4.0
+
+# quant baseline models (量化基线引擎)
+# 为什么必须开：关掉后 quant.py 会退化成纯 numpy 线性逻辑回归，
+# 在尖峰厚尾的日收益上几乎学不到东西（实测 BSS 仅 +0.008，方向增量 0.0000）。
+# lightgbm 的 sklearn 接口（LGBMRegressor/LGBMClassifier）依赖 scikit-learn，
+# 两者必须同时存在，否则会抛 LightGBMError。
+lightgbm>=4.0
+scikit-learn>=1.4

@@ -1,0 +1,28 @@
+# 敏感配置（含真实 API Key，勿提交；请基于 config.example.toml 配置）
+config.toml
+.streamlit/secrets.toml
+
+# 数据与运行时产物
+data/
+*.log
+logs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 本地工具 / Agent 状态
+.agents/
+.workbuddy/
+deliverables/
+
+# 前端依赖与构建产物（frontend/.gitignore 亦已覆盖）
+frontend/node_modules/
+frontend/dist/
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
