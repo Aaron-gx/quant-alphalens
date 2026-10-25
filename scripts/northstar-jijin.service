@@ -1,0 +1,14 @@
+[Unit]
+Description=JiJin fund prediction engine (FastAPI sidecar 127.0.0.1:8790)
+After=network-online.target northstar-sync.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/jijin
+ExecStart=/opt/jijin/.venv/bin/python -X utf8 -m uvicorn api.main:app --host 127.0.0.1 --port 8790
+Restart=always
+RestartSec=3
+Environment=LLM_RELAY_URL=http://127.0.0.1:8787/api/llm
+
+[Install]
+WantedBy=multi-user.target
